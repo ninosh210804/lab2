@@ -1,0 +1,18 @@
+{% extends "unfold/layouts/base_simple.html" %}
+{% load i18n unfold %}
+
+{% block content %}
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+  {% for card in dashboard_cards %}
+    {% component "unfold/components/card.html" with title=card.title %}
+      <div class="text-3xl font-bold">{{ card.value }}</div>
+    {% endcomponent %}
+  {% endfor %}
+</div>
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+  {% component "unfold/components/chart/bar.html" with title="Posts by category" data=category_chart %}{% endcomponent %}
+  {% component "unfold/components/table.html" with table=top_authors headers="Author,Posts" %}{% endcomponent %}
+  {% component "unfold/components/progress.html" with title="Published posts" value=published_share %}{% endcomponent %}
+  {% component "unfold/components/progress.html" with title="Draft posts" value=draft_share %}{% endcomponent %}
+</div>
+{% endblock %}
