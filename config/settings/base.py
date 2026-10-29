@@ -160,7 +160,11 @@ UNFOLD = {
             {"title": "Groups", "icon": "group", "link": reverse_lazy("admin:auth_group_changelist")},
         ], "permission": lambda request: request.user.is_superuser},
     ]},
-    "TABS": [{"models": ("blog.post",), "items": "apps.blog.callbacks.post_tabs"}],
+    "TABS": [{"models": ("blog.post",), "items": [
+        {"title": "All", "link": lambda request: "/admin/blog/post/"},
+        {"title": "Published", "link": lambda request: "/admin/blog/post/?status__exact=published"},
+        {"title": "Drafts", "link": lambda request: "/admin/blog/post/?status__exact=draft"},
+    ]}],
     "DASHBOARD_CALLBACK": "apps.blog.callbacks.dashboard_callback",
 }
 

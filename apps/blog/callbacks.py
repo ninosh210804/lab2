@@ -1,7 +1,7 @@
 import json
 
 from django.db.models import Count
-from django.urls import reverse_lazy
+from django.urls import reverse
 
 from apps.blog.models import Comment, Post, User
 
@@ -14,13 +14,16 @@ def drafts_badge(request):
     return Post.objects.filter(status=Post.Status.DRAFT).count()
 
 
-def post_tabs(request):
-    base = reverse_lazy("admin:blog_post_changelist")
-    return [
-        {"title": "All", "link": str(base)},
-        {"title": "Published", "link": f"{base}?status__exact=published"},
-        {"title": "Drafts", "link": f"{base}?status__exact=draft"},
-    ]
+def all_posts_link(request):
+    return reverse("admin:blog_post_changelist")
+
+
+def published_posts_link(request):
+    return f'{reverse("admin:blog_post_changelist")}?status__exact=published'
+
+
+def draft_posts_link(request):
+    return f'{reverse("admin:blog_post_changelist")}?status__exact=draft'
 
 
 def dashboard_callback(request, context):
