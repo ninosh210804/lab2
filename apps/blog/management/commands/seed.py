@@ -19,6 +19,10 @@ SEED_PASSWORD = "seed-password-123"
 CATEGORIES = ["Python", "Django", "DevOps", "Databases", "Frontend", "Testing", "Security", "Career"]
 TAGS = ["python", "django", "api", "rest", "web", "linux", "docker", "postgresql", "redis", "javascript", "typescript", "react", "testing", "security", "async", "celery", "git", "performance", "backend", "tutorial"]
 PUBLISHED_PERCENT = 70
+POST_DATE_RANGE_DAYS = 365
+EDITED_POST_PERCENT = 30
+EDITED_POST_MIN_DAYS = 1
+EDITED_POST_MAX_DAYS = 30
 
 
 def unique_slug(base: str, used: set[str]) -> str:
@@ -74,7 +78,7 @@ class Command(BaseCommand):
         created_posts = self._create_posts(posts_count, category_objects, tag_objects) if posts_count else []
         if comments_count and not Post.objects.filter(status=Post.Status.PUBLISHED).exists():
             raise CommandError("Comments were requested, but there are no published posts.")
-        created_comments = self._create_comments(comments_count) if comments_count else 0
+        created_comments = self._create_comments(comments_count, created_posts) if comments_count else 0
 
         self.stdout.write(self.style.SUCCESS(f"Users:       {users_count} created"))
         self.stdout.write(self.style.SUCCESS(f"Categories:   {len(category_objects)} created"))
@@ -119,10 +123,29 @@ class Command(BaseCommand):
         authors = list(User.objects.filter(is_active=True)) or list(User.objects.all())
         used_slugs = set(Post.objects.values_list("slug", flat=True))
         objects = []
+        post_dates = []
+        now = timezone.now()
+        earliest_created_at = now - timedelta(days=POST_DATE_RANGE_DAYS)
+        date_range_seconds = int((now - earliest_created_at).total_seconds())
         for index in range(count):
             title = fake.sentence(nb_words=random.randint(4, 8)).rstrip(".")
             if index % 11 == 0:
                 title = "A Practical Django Guide"
+            created_at = earliest_created_at + timedelta(
+                seconds=random.randint(0, date_range_seconds)
+            )
+            updated_at = created_at
+            available_days = (now - created_at).days
+            if (
+                random.random() * 100 < EDITED_POST_PERCENT
+                and available_days >= EDITED_POST_MIN_DAYS
+            ):
+                edited_days = random.randint(
+                    EDITED_POST_MIN_DAYS,
+                    min(EDITED_POST_MAX_DAYS, available_days),
+                )
+                updated_at = created_at + timedelta(days=edited_days)
+            post_dates.append((created_at, updated_at))
             objects.append(Post(
                 title=title,
                 slug=unique_slug(slugify(title), used_slugs),
@@ -130,23 +153,51 @@ class Command(BaseCommand):
                 status=Post.Status.PUBLISHED if random.random() * 100 < PUBLISHED_PERCENT else Post.Status.DRAFT,
                 author=random.choice(authors),
                 category=random.choice(categories) if categories and random.random() >= 0.10 else None,
+                created_at=created_at,
+                updated_at=updated_at,
             ))
         created = Post.objects.bulk_create(objects)
+        for post, (created_at, updated_at) in zip(created, post_dates):
+            post.created_at = created_at
+            post.updated_at = updated_at
+        Post.objects.bulk_update(created, ["created_at", "updated_at"])
         for post in created:
             selected = random.sample(tags, random.randint(0, min(5, len(tags))))
             if selected:
                 post.tags.set(selected)
         return created
 
-    def _create_comments(self, count: int) -> int:
+    def _create_comments(self, count: int, seeded_posts: list[Post]) -> int:
         fake = Faker()
         random = Random(23)
         authors = list(User.objects.all())
-        posts = list(Post.objects.filter(status=Post.Status.PUBLISHED))
+        posts = [
+            post for post in seeded_posts if post.status == Post.Status.PUBLISHED
+        ]
+        if not posts:
+            posts = list(Post.objects.filter(status=Post.Status.PUBLISHED))
+        if not posts:
+            raise CommandError(
+                "Comments were requested, but there are no published posts."
+            )
         objects = []
         now = timezone.now()
         for index in range(count):
-            comment = Comment(post=random.choice(posts), author=random.choice(authors), body=" ".join(fake.sentences(nb=random.randint(1, 3))))
+            post = random.choice(posts)
+            comment = Comment(
+                post=post,
+                author=random.choice(authors),
+                body=" ".join(fake.sentences(nb=random.randint(1, 3))),
+            )
             objects.append(comment)
         created = Comment.objects.bulk_create(objects)
+        for comment in created:
+            comment_created_at = comment.post.created_at
+            comment.created_at = comment_created_at + timedelta(
+                seconds=random.randint(
+                    0,
+                    max(0, int((now - comment_created_at).total_seconds())),
+                )
+            )
+        Comment.objects.bulk_update(created, ["created_at"])
         return len(created)
